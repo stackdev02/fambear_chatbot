@@ -14,7 +14,6 @@ Thumbs.db
 
 # Ignore environment variable files (if any)
 .env
-*.env
 
 # Ignore zip files (Lambda deployment package)
 *.zip
