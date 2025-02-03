@@ -1,0 +1,27 @@
+# Ignore the virtual environment
+fambearenv/
+venv/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore environment variable files (if any)
+.env
+
+# Ignore zip files (Lambda deployment package)
+*.zip
+
+# Ignore logs and debug files
+*.log
+
+# Ignore IDE/editor files
+.vscode/
+.idea/
+*.swp
