@@ -20,7 +20,7 @@ user_histories = {}
 
 async def start(update: Update, context: CallbackContext):
     """Handle /start command."""
-    await update.message.reply_text("Hello! Send me a message, and I'll reply using ChatGPT.")
+    await update.message.reply_text("Hello! Send me a message, then I can help you to find right candidates for your family.")
 
 async def handle_message(update: Update, context: CallbackContext):
     """Handle user messages and forward to AWS Lambda."""
@@ -48,9 +48,10 @@ async def handle_message(update: Update, context: CallbackContext):
             data = response.json()
             body = json.loads(data.get("body"))
             chatgpt_response = body.get("reply")
+            p_time = body.get("p_time")
 
             if chatgpt_response:
-                await update.message.reply_text(chatgpt_response)
+                await update.message.reply_text(f"{chatgpt_response} ({p_time}s)")
 
                 # Add ChatGPT response to history
                 user_histories[chat_id].append({"role": "assistant", "content": chatgpt_response})
