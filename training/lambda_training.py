@@ -96,8 +96,7 @@ def fetch_data():
             GROUP BY sps.profile_id, category
         ) AS skill_list ON sp.id = skill_list.profile_id
         WHERE sp.is_deleted = 0 AND (sp.highlights IS NOT NULL AND sp.highlights <> '')
-        GROUP BY sp.id
-        LIMIT 10;
+        GROUP BY sp.id;
         """
         
         with connection.cursor() as cursor:
@@ -109,8 +108,6 @@ def fetch_data():
     except Exception as e:
         logger.error(Fore.RED + f"Database error: {e}" + Style.RESET_ALL, exc_info=True)
         return []
-
-import json
 
 import json
 
@@ -137,7 +134,9 @@ def process_text(record):
 
     # Process categorized skills
     skills_data = record.get("categorized_skills", {})
-    if isinstance(skills_data, str):
+    if skills_data is None:
+        skills_data = {}
+    elif isinstance(skills_data, str):
         try:
             skills_data = json.loads(skills_data)
         except json.JSONDecodeError:
@@ -157,12 +156,12 @@ def process_text(record):
         f"## Skills:\n{skills_text}"
     )
 
-    logger.info(result)
+    # logger.info(result)
     return result
 
 
 
-def get_embeddings(batch_texts, model="text-embedding-ada-002"):
+def get_embeddings(batch_texts, model="text-embedding-3-small"):
     """Generate embeddings for a batch of texts."""
     try:
         response = openai.embeddings.create(input=batch_texts, model=model)
@@ -189,10 +188,12 @@ def store_in_pinecone(records, pinecone_index):
                 "values": vector,
                 "metadata": {
                     "profile_id": record["profile_id"],
+                    "profile_link": f"https://www.fambear.com/customers/profile/{record["profile_id"]}",
                     "user_id": record["user_id"],
+                    "data": text
                 }
             }
-            for record, vector in zip(batch_records, batch_embeddings)
+            for record, vector, text in zip(batch_records, batch_embeddings, batch_texts)
         ]
 
         if upserts:
