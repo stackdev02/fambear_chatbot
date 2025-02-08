@@ -1,15 +1,17 @@
 import os
-import pymysql
+import sys
 import json
 import logging
 import time
-from dotenv import load_dotenv
+
+sys.path.append('/opt/openai_package')
+sys.path.append('/opt/pinecone_package')
+sys.path.append('/opt/pymysql_package')
+# sys.path.append('/opt/colorama_package')
+
+import pymysql
 import openai
 from pinecone import Pinecone, ServerlessSpec
-from colorama import Fore, Style
-
-# Load environment variables
-load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -38,19 +40,18 @@ def ensure_pinecone_index(index_name, dimension=1536, metric="cosine"):
         existing_indexes = [index['name'] for index in pc.list_indexes().get('indexes', [])]
 
         if index_name in existing_indexes:
-            logger.warning(Fore.YELLOW + f"Index '{index_name}' exists. Deleting it..." + Style.RESET_ALL)
+            print(f"Index '{index_name}' exists. Deleting it...")
             pc.delete_index(index_name)
 
-            # Polling loop: Wait for deletion to complete
             while True:
-                time.sleep(2)  # Check every 2 seconds
+                time.sleep(2)
                 existing_indexes = [index['name'] for index in pc.list_indexes().get('indexes', [])]
                 if index_name not in existing_indexes:
                     break
 
-            logger.info(Fore.GREEN + f"Index '{index_name}' deleted successfully." + Style.RESET_ALL)
+            print(f"Index '{index_name}' deleted successfully.")
 
-        logger.info(Fore.CYAN + f"Creating index '{index_name}'..." + Style.RESET_ALL)
+        print(f"Creating index '{index_name}'...")
         pc.create_index(
             index_name, 
             dimension=dimension, 
@@ -58,26 +59,25 @@ def ensure_pinecone_index(index_name, dimension=1536, metric="cosine"):
             spec=ServerlessSpec(cloud='aws', region=os.getenv("PINECONE_REGION", "us-east-1"))
         )
 
-        # Poll until the new index appears
         while True:
-            time.sleep(2)  # Check every 2 seconds
+            time.sleep(2)
             existing_indexes = [index['name'] for index in pc.list_indexes().get('indexes', [])]
             if index_name in existing_indexes:
                 break
 
-        logger.info(Fore.GREEN + f"Index '{index_name}' created successfully." + Style.RESET_ALL)
+        print(f"Index '{index_name}' created successfully.")
         return pc.Index(index_name)
 
     except Exception as e:
-        logger.error(Fore.RED + f"Error ensuring Pinecone index: {e}" + Style.RESET_ALL, exc_info=True)
+        print(f"Error ensuring Pinecone index: {e}")
         raise
 
 def fetch_data():
     """Fetch data from MySQL database."""
     try:
-        logger.info(Fore.CYAN + "Connecting to database..." + Style.RESET_ALL)
+        print("Connecting to database...")
         connection = pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
-        logger.info(Fore.GREEN + "Connected to database." + Style.RESET_ALL)
+        print("Connected to database.")
 
         query = """
         SELECT 
@@ -106,16 +106,12 @@ def fetch_data():
         
         return result
     except Exception as e:
-        logger.error(Fore.RED + f"Database error: {e}" + Style.RESET_ALL, exc_info=True)
+        print(f"Database error: {e}")
         return []
-
-import json
 
 def process_text(record):
     """Combine key fields into a structured multi-line text format."""
-
     def format_schedule(schedule_str):
-        """Parse JSON schedule and format enabled workdays."""
         try:
             schedule = json.loads(schedule_str) if isinstance(schedule_str, str) else schedule_str
             work_days = [f"- {day}: {info['start']} to {info['end']}" for day, info in schedule.items() if info.get("enable") == "true"]
@@ -123,20 +119,16 @@ def process_text(record):
         except json.JSONDecodeError:
             return ""
 
-    # Extract fields safely
     highlights = record.get("highlights", "")
     work_experience_current = record.get("work_experience_current", "")
     work_experience_last_year = record.get("work_experience_last_year", "")
     work_experience_last_five_year = record.get("work_experience_last_five_year", "")
     rate_hourly = record.get("rate_hourly", "")
     rate_monthly = record.get("rate_monthly", "")
-    schedule = format_schedule(record.get("schedule", "{}"))  # Ensure JSON parsing
-
-    # Process categorized skills
+    schedule = format_schedule(record.get("schedule", "{}"))
+    
     skills_data = record.get("categorized_skills", {})
-    if skills_data is None:
-        skills_data = {}
-    elif isinstance(skills_data, str):
+    if isinstance(skills_data, str):
         try:
             skills_data = json.loads(skills_data)
         except json.JSONDecodeError:
@@ -144,8 +136,7 @@ def process_text(record):
 
     skills_text = "\n".join([f"- {category}: {', '.join(skills)}" for category, skills in skills_data.items()])
 
-    # Combine all into a multi-line string
-    result = (
+    return (
         f"## Description: {highlights}\n"
         f"## Recent Work Experience: {work_experience_current}\n"
         f"## Previous Work Experience: {work_experience_last_year}\n"
@@ -156,24 +147,17 @@ def process_text(record):
         f"## Skills:\n{skills_text}"
     )
 
-    # logger.info(result)
-    return result
-
-
-
 def get_embeddings(batch_texts, model="text-embedding-3-small"):
-    """Generate embeddings for a batch of texts."""
     try:
         response = openai.embeddings.create(input=batch_texts, model=model)
         return [embedding.embedding for embedding in response.data]
     except Exception as e:
-        logger.error(Fore.RED + f"Error generating embeddings: {e}" + Style.RESET_ALL, exc_info=True)
+        print(f"Error generating embeddings: {e}")
         return None
 
 def store_in_pinecone(records, pinecone_index):
-    """Store processed records in Pinecone in batches."""
     if not records:
-        logger.info(Fore.YELLOW + "No records to store." + Style.RESET_ALL)
+        print("No records to store.")
         return
     
     texts = [process_text(record) for record in records]
@@ -188,7 +172,7 @@ def store_in_pinecone(records, pinecone_index):
                 "values": vector,
                 "metadata": {
                     "profile_id": record["profile_id"],
-                    "profile_link": f"https://www.fambear.com/customers/profile/{record["profile_id"]}",
+                    "profile_link": f"https://www.fambear.com/customers/profile/{record['profile_id']}",
                     "user_id": record["user_id"],
                     "data": text
                 }
@@ -197,19 +181,14 @@ def store_in_pinecone(records, pinecone_index):
         ]
 
         if upserts:
-            logger.info(Fore.CYAN + "Uploading batch to Pinecone..." + Style.RESET_ALL)
+            print("Uploading batch to Pinecone...")
             pinecone_index.upsert(upserts, namespace="service-providers")
-            logger.info(Fore.GREEN + f"Stored {len(upserts)} records in Pinecone." + Style.RESET_ALL)
+            print(f"Stored {len(upserts)} records in Pinecone.")
 
-def handler(event=None, context=None):
+def lambda_handler(event=None, context=None):
     start_time = time.time()
-    logger.info(Fore.BLUE + "Starting data processing pipeline..." + Style.RESET_ALL)
-
+    print("Starting data processing pipeline...")
     pinecone_index = ensure_pinecone_index(INDEX_NAME)
     records = fetch_data()
     store_in_pinecone(records, pinecone_index)
-
-    logger.info(Fore.MAGENTA + f"Total processing time: {time.time() - start_time:.2f} seconds" + Style.RESET_ALL)
-
-if __name__ == "__main__":
-    handler()
+    print(f"Total processing time: {time.time() - start_time:.2f} seconds")
