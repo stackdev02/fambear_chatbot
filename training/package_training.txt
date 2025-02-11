@@ -3,3 +3,4 @@ python-dotenv
 openai
 pinecone-client
 colorama
+boto3
